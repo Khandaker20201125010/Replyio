@@ -23,11 +23,13 @@ exports.resubscribePage = resubscribePage;
 exports.disconnectPage = disconnectPage;
 exports.getUserConnectedPages = getUserConnectedPages;
 exports.getPageById = getPageById;
+exports.checkPageTokenHealth = checkPageTokenHealth;
 const axios_1 = __importDefault(require("axios"));
 const prisma_1 = __importDefault(require("../../config/prisma"));
 const env_1 = require("../../config/env");
 const errors_1 = require("../../utils/errors");
 const logger_1 = require("../../utils/logger");
+const user_1 = require("../../utils/user");
 function getOAuthUrl(state) {
     const scope = env_1.env.META_OAUTH_SCOPES ||
         "pages_show_list,pages_read_engagement,pages_manage_posts,pages_manage_engagement,pages_manage_metadata,pages_read_user_content";
@@ -184,9 +186,10 @@ function subscribePageToWebhooks(pageId, pageAccessToken) {
 }
 function resubscribePage(userId, pageIdOrId) {
     return __awaiter(this, void 0, void 0, function* () {
+        const effectiveUserIds = yield (0, user_1.getEffectiveUserIds)(userId);
         const page = yield prisma_1.default.facebookPage.findFirst({
             where: {
-                userId,
+                userId: { in: effectiveUserIds },
                 OR: [{ id: pageIdOrId }, { pageId: pageIdOrId }],
                 isConnected: true,
             },
@@ -201,9 +204,10 @@ function resubscribePage(userId, pageIdOrId) {
 function disconnectPage(userId, pageIdOrId) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a;
+        const effectiveUserIds = yield (0, user_1.getEffectiveUserIds)(userId);
         const page = yield prisma_1.default.facebookPage.findFirst({
             where: {
-                userId,
+                userId: { in: effectiveUserIds },
                 OR: [{ id: pageIdOrId }, { pageId: pageIdOrId }],
             },
         });
@@ -233,9 +237,10 @@ function disconnectPage(userId, pageIdOrId) {
 }
 function getUserConnectedPages(userId) {
     return __awaiter(this, void 0, void 0, function* () {
+        const effectiveUserIds = yield (0, user_1.getEffectiveUserIds)(userId);
         return yield prisma_1.default.facebookPage.findMany({
             where: {
-                userId,
+                userId: { in: effectiveUserIds },
                 isConnected: true,
             },
             orderBy: {
@@ -246,9 +251,10 @@ function getUserConnectedPages(userId) {
 }
 function getPageById(userId, pageIdOrId) {
     return __awaiter(this, void 0, void 0, function* () {
+        const effectiveUserIds = yield (0, user_1.getEffectiveUserIds)(userId);
         const page = yield prisma_1.default.facebookPage.findFirst({
             where: {
-                userId,
+                userId: { in: effectiveUserIds },
                 OR: [{ id: pageIdOrId }, { pageId: pageIdOrId }],
                 isConnected: true,
             },
@@ -257,6 +263,43 @@ function getPageById(userId, pageIdOrId) {
             throw new errors_1.NotFoundError("Page not found");
         }
         return page;
+    });
+}
+function checkPageTokenHealth(pageAccessToken) {
+    return __awaiter(this, void 0, void 0, function* () {
+        var _a, _b, _c;
+        try {
+            const res = yield axios_1.default.get("https://graph.facebook.com/v18.0/me", {
+                params: { access_token: pageAccessToken },
+                timeout: 5000,
+            });
+            if ((_a = res.data) === null || _a === void 0 ? void 0 : _a.id) {
+                return { isValid: true, isCheckpoint: false, statusMessage: "Active" };
+            }
+            return { isValid: false, isCheckpoint: false, statusMessage: "Invalid token response" };
+        }
+        catch (err) {
+            const fbError = (_c = (_b = err.response) === null || _b === void 0 ? void 0 : _b.data) === null || _c === void 0 ? void 0 : _c.error;
+            if (fbError) {
+                if (fbError.code === 190 && fbError.error_subcode === 459) {
+                    return {
+                        isValid: false,
+                        isCheckpoint: true,
+                        statusMessage: "Facebook security checkpoint: Please log in to www.facebook.com to verify your account, then reconnect your page.",
+                    };
+                }
+                return {
+                    isValid: false,
+                    isCheckpoint: false,
+                    statusMessage: fbError.message || "Token expired or invalid",
+                };
+            }
+            return {
+                isValid: false,
+                isCheckpoint: false,
+                statusMessage: err.message || "Could not reach Meta Graph API",
+            };
+        }
     });
 }
 //# sourceMappingURL=facebook.service.js.map

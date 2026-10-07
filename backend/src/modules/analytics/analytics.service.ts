@@ -1,8 +1,10 @@
 import prisma from "../../config/prisma";
 import { logger } from "../../utils/logger";
+import { getEffectiveUserIds } from "../../utils/user";
 
 export async function getOverviewAnalytics(userId: string, filters: any) {
   const { pageId, startDate, endDate, days } = filters;
+  const effectiveUserIds = await getEffectiveUserIds(userId);
 
   const dateFilter: any = {};
   if (startDate) {
@@ -16,7 +18,7 @@ export async function getOverviewAnalytics(userId: string, filters: any) {
     dateFilter.lte = new Date(endDate);
   }
 
-  const pageWhere: any = { facebookPage: { userId } };
+  const pageWhere: any = { facebookPage: { userId: { in: effectiveUserIds } } };
   if (pageId) pageWhere.facebookPageId = pageId;
   if (Object.keys(dateFilter).length > 0) pageWhere.createdTime = dateFilter;
 
@@ -32,12 +34,12 @@ export async function getOverviewAnalytics(userId: string, filters: any) {
     prisma.comment.count({ where: { ...pageWhere, status: "PENDING" } }),
     prisma.reply.count({
       where: {
-        comment: { facebookPage: { userId } },
+        comment: { facebookPage: { userId: { in: effectiveUserIds } } },
         status: "SENT",
         ...(pageId && { facebookPageId: pageId }),
       },
     }),
-    prisma.facebookPage.count({ where: { userId, isConnected: true } }),
+    prisma.facebookPage.count({ where: { userId: { in: effectiveUserIds }, isConnected: true } }),
   ]);
 
   const successRate =
@@ -62,6 +64,7 @@ export async function getOverviewAnalytics(userId: string, filters: any) {
 
 export async function getCommentsAnalytics(userId: string, filters: any) {
   const { pageId, startDate, endDate, days } = filters;
+  const effectiveUserIds = await getEffectiveUserIds(userId);
 
   const dateFilter: any = {};
   if (startDate) {
@@ -75,7 +78,7 @@ export async function getCommentsAnalytics(userId: string, filters: any) {
     dateFilter.lte = new Date(endDate);
   }
 
-  const where: any = { facebookPage: { userId } };
+  const where: any = { facebookPage: { userId: { in: effectiveUserIds } } };
   if (pageId) where.facebookPageId = pageId;
   if (Object.keys(dateFilter).length > 0) where.createdTime = dateFilter;
 
@@ -112,6 +115,7 @@ export async function getCommentsAnalytics(userId: string, filters: any) {
 
 export async function getRepliesAnalytics(userId: string, filters: any) {
   const { pageId, startDate, endDate, days } = filters;
+  const effectiveUserIds = await getEffectiveUserIds(userId);
 
   const dateFilter: any = {};
   if (startDate) {
@@ -128,7 +132,7 @@ export async function getRepliesAnalytics(userId: string, filters: any) {
   const where: any = {
     comment: {
       facebookPage: {
-        userId,
+        userId: { in: effectiveUserIds },
       },
     },
   };

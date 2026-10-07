@@ -29,7 +29,7 @@ export declare function getReplies(userId: string, filters: any): Promise<{
     }[];
     total: number;
     limit: any;
-    offset: any;
+    offset: number;
 }>;
 export declare function getReplyById(userId: string, replyId: string): Promise<{
     comment: {

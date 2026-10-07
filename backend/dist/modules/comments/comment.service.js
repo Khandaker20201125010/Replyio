@@ -24,12 +24,14 @@ const axios_1 = __importDefault(require("axios"));
 const ai_service_1 = require("../ai/ai.service");
 const reply_service_1 = require("../replies/reply.service");
 const rules_service_1 = require("../rules/rules.service");
+const user_1 = require("../../utils/user");
 function getComments(userId, filters) {
     return __awaiter(this, void 0, void 0, function* () {
         const { pageId, status, limit = 20, offset = 0 } = filters;
+        const effectiveUserIds = yield (0, user_1.getEffectiveUserIds)(userId);
         const where = {
             facebookPage: {
-                userId,
+                userId: { in: effectiveUserIds },
             },
         };
         if (pageId) {
@@ -74,11 +76,12 @@ function getComments(userId, filters) {
 }
 function getCommentById(userId, commentId) {
     return __awaiter(this, void 0, void 0, function* () {
+        const effectiveUserIds = yield (0, user_1.getEffectiveUserIds)(userId);
         const comment = yield prisma_1.default.comment.findFirst({
             where: {
                 id: commentId,
                 facebookPage: {
-                    userId,
+                    userId: { in: effectiveUserIds },
                 },
             },
             include: {
@@ -103,11 +106,12 @@ function getCommentById(userId, commentId) {
 }
 function updateCommentStatus(userId, commentId, data) {
     return __awaiter(this, void 0, void 0, function* () {
+        const effectiveUserIds = yield (0, user_1.getEffectiveUserIds)(userId);
         const comment = yield prisma_1.default.comment.findFirst({
             where: {
                 id: commentId,
                 facebookPage: {
-                    userId,
+                    userId: { in: effectiveUserIds },
                 },
             },
         });
@@ -124,19 +128,33 @@ function updateCommentStatus(userId, commentId, data) {
         return updated;
     });
 }
-function processComment(commentId) {
-    return __awaiter(this, void 0, void 0, function* () {
+function processComment(commentId_1) {
+    return __awaiter(this, arguments, void 0, function* (commentId, allowRetry = false) {
+        var _a;
         const comment = yield prisma_1.default.comment.findUnique({
             where: { id: commentId },
             include: {
                 facebookPage: true,
+                replies: true,
             },
         });
         if (!comment) {
             throw new errors_1.NotFoundError("Comment not found");
         }
-        // Check if comment is already processed
-        if (comment.status !== "PENDING") {
+        // Check if comment already has a SENT reply
+        const hasSentReply = (_a = comment.replies) === null || _a === void 0 ? void 0 : _a.some((r) => r.status === "SENT");
+        if (hasSentReply) {
+            if (comment.status !== "REPLIED") {
+                yield prisma_1.default.comment.update({
+                    where: { id: commentId },
+                    data: { status: "REPLIED" },
+                });
+            }
+            logger_1.logger.info({ commentId, status: "REPLIED" }, "Comment already has a sent reply, marked REPLIED");
+            return comment;
+        }
+        // Check if comment is already processed and retry not requested
+        if (!allowRetry && comment.status !== "PENDING") {
             logger_1.logger.info({ commentId, status: comment.status }, "Comment already processed");
             return comment;
         }
@@ -150,9 +168,9 @@ function processComment(commentId) {
                     userId: comment.facebookPage.userId,
                     status: "ACTIVE",
                     aiProvider: "openrouter",
-                    model: "google/gemma-4-31b-it:free",
+                    model: "inclusionai/ling-3.0-flash-sante:free",
                     confidenceThreshold: 0.7,
-                    tone: "professional",
+                    tone: "friendly",
                     language: "en",
                     emojiUsage: true,
                     maxLength: 500,
@@ -276,6 +294,10 @@ function processComment(commentId) {
                 }
                 catch (sendError) {
                     logger_1.logger.error({ error: sendError, commentId, replyId: reply.id }, "Auto-reply Facebook send failed");
+                    yield prisma_1.default.comment.update({
+                        where: { id: commentId },
+                        data: { status: "FAILED" },
+                    });
                 }
             }
             else {
@@ -300,8 +322,9 @@ function processComment(commentId) {
 function syncFacebookComments(userId, targetPageId) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a, _b, _c, _d, _e, _f, _g;
+        const effectiveUserIds = yield (0, user_1.getEffectiveUserIds)(userId);
         const where = {
-            userId,
+            userId: { in: effectiveUserIds },
             isConnected: true,
         };
         if (targetPageId) {
@@ -374,8 +397,28 @@ function syncFacebookComments(userId, targetPageId) {
                         const hasSentReply = (_c = commentRecord.replies) === null || _c === void 0 ? void 0 : _c.some((r) => r.status === "SENT");
                         // Check if Facebook already has a reply from this page to this comment (nested replies)
                         const nestedReplies = ((_d = fbComment.comments) === null || _d === void 0 ? void 0 : _d.data) || [];
-                        const pageAlreadyRepliedOnFb = nestedReplies.some((sub) => { var _a; return String((_a = sub.from) === null || _a === void 0 ? void 0 : _a.id) === String(page.pageId); });
+                        const fbPageReply = nestedReplies.find((sub) => { var _a; return String((_a = sub.from) === null || _a === void 0 ? void 0 : _a.id) === String(page.pageId); });
+                        const pageAlreadyRepliedOnFb = !!fbPageReply;
                         if (hasSentReply || pageAlreadyRepliedOnFb) {
+                            // If Facebook has a page reply but we don't have it in our DB yet, import it!
+                            if (!hasSentReply && fbPageReply) {
+                                yield prisma_1.default.reply.create({
+                                    data: {
+                                        commentId: commentRecord.id,
+                                        facebookPageId: page.id,
+                                        replyId: fbPageReply.id,
+                                        generatedReply: fbPageReply.message || "Replied directly on Facebook",
+                                        status: "SENT",
+                                        aiProvider: "facebook",
+                                        confidence: 1.0,
+                                        requiresHumanReview: false,
+                                        createdAt: fbPageReply.created_time
+                                            ? new Date(fbPageReply.created_time)
+                                            : new Date(),
+                                    },
+                                });
+                                logger_1.logger.info({ commentId: commentRecord.id, fbReplyId: fbPageReply.id }, "Imported existing Facebook reply into database");
+                            }
                             if (commentRecord.status !== "REPLIED") {
                                 yield prisma_1.default.comment.update({
                                     where: { id: commentRecord.id },
@@ -384,11 +427,22 @@ function syncFacebookComments(userId, targetPageId) {
                             }
                             continue;
                         }
-                        // If comment is PENDING or ERROR, process with AI & auto-reply
+                        // If comment was previously falsely marked as REPLIED but has no reply on FB and no reply in DB,
+                        // reset it to PENDING so AI can properly auto-reply!
+                        if (!hasSentReply && !pageAlreadyRepliedOnFb && commentRecord.status === "REPLIED") {
+                            logger_1.logger.warn({ commentId: commentRecord.id }, "Comment was marked REPLIED but has no reply record or FB reply. Resetting to PENDING for auto-reply.");
+                            yield prisma_1.default.comment.update({
+                                where: { id: commentRecord.id },
+                                data: { status: "PENDING" },
+                            });
+                            commentRecord.status = "PENDING";
+                        }
+                        // If comment is PENDING, ERROR, or FAILED, process with AI & auto-reply
                         if (commentRecord.status === "PENDING" ||
-                            commentRecord.status === "ERROR") {
+                            commentRecord.status === "ERROR" ||
+                            commentRecord.status === "FAILED") {
                             try {
-                                yield processComment(commentRecord.id);
+                                yield processComment(commentRecord.id, true);
                                 const updatedReply = yield prisma_1.default.reply.findFirst({
                                     where: { commentId: commentRecord.id, status: "SENT" },
                                 });

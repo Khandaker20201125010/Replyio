@@ -2,16 +2,30 @@ import prisma from "../../config/prisma";
 import { NotFoundError, AuthorizationError } from "../../utils/errors";
 import { logger } from "../../utils/logger";
 import axios from "axios";
+import { getEffectiveUserIds } from "../../utils/user";
 
 export async function getReplies(userId: string, filters: any) {
-  const { commentId, pageId, status, limit = 20, offset = 0 } = filters;
+  const { commentId, pageId, status, limit = 20 } = filters;
+  const effectiveUserIds = await getEffectiveUserIds(userId);
+  const take = Math.max(1, Number(limit) || 20);
+  const pageNum = Math.max(1, Number(filters.page || 1));
+  const offset = filters.offset !== undefined ? Math.max(0, Number(filters.offset)) : (pageNum - 1) * take;
 
   const where: any = {
-    comment: {
-      facebookPage: {
-        userId,
+    OR: [
+      {
+        facebookPage: {
+          userId: { in: effectiveUserIds },
+        },
       },
-    },
+      {
+        comment: {
+          facebookPage: {
+            userId: { in: effectiveUserIds },
+          },
+        },
+      },
+    ],
   };
 
   if (commentId) {
@@ -22,7 +36,7 @@ export async function getReplies(userId: string, filters: any) {
     where.facebookPageId = pageId;
   }
 
-  if (status) {
+  if (status && status !== "ALL") {
     where.status = status;
   }
 
@@ -47,7 +61,7 @@ export async function getReplies(userId: string, filters: any) {
       orderBy: {
         createdAt: "desc",
       },
-      take: limit,
+      take,
       skip: offset,
     }),
     prisma.reply.count({ where }),
@@ -69,11 +83,12 @@ export async function getReplies(userId: string, filters: any) {
 }
 
 export async function getReplyById(userId: string, replyId: string) {
+  const effectiveUserIds = await getEffectiveUserIds(userId);
   const reply = await prisma.reply.findFirst({
     where: {
       id: replyId,
       facebookPage: {
-        userId,
+        userId: { in: effectiveUserIds },
       },
     },
     include: {
@@ -90,11 +105,12 @@ export async function getReplyById(userId: string, replyId: string) {
 }
 
 export async function approveReply(userId: string, replyId: string) {
+  const effectiveUserIds = await getEffectiveUserIds(userId);
   const reply = await prisma.reply.findFirst({
     where: {
       id: replyId,
       facebookPage: {
-        userId,
+        userId: { in: effectiveUserIds },
       },
     },
   });
@@ -127,11 +143,12 @@ export async function approveReply(userId: string, replyId: string) {
 }
 
 export async function rejectReply(userId: string, replyId: string) {
+  const effectiveUserIds = await getEffectiveUserIds(userId);
   const reply = await prisma.reply.findFirst({
     where: {
       id: replyId,
       facebookPage: {
-        userId,
+        userId: { in: effectiveUserIds },
       },
     },
   });
@@ -157,11 +174,12 @@ export async function rejectReply(userId: string, replyId: string) {
 }
 
 export async function retryReply(userId: string, replyId: string) {
+  const effectiveUserIds = await getEffectiveUserIds(userId);
   const reply = await prisma.reply.findFirst({
     where: {
       id: replyId,
       facebookPage: {
-        userId,
+        userId: { in: effectiveUserIds },
       },
     },
     include: {

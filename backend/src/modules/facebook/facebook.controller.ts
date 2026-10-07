@@ -10,6 +10,7 @@ import {
   getUserConnectedPages,
   getPageById,
   resubscribePage,
+  checkPageTokenHealth,
 } from "./facebook.service";
 import { logger } from "../../utils/logger";
 import { env } from "../../config/env";
@@ -240,18 +241,28 @@ export async function getConnectedPagesController(
       ? !aiSettings.humanApprovalMode && aiSettings.status === "ACTIVE"
       : true;
 
-    res.status(200).json({
-      success: true,
-      data: {
-        pages: pages.map((page) => ({
+    const pagesWithHealth = await Promise.all(
+      pages.map(async (page) => {
+        const health = await checkPageTokenHealth(page.pageAccessToken);
+        return {
           id: page.id,
           pageId: page.pageId,
           pageName: page.pageName,
           isConnected: page.isConnected,
-          isActive: page.isConnected,
+          isActive: page.isConnected && health.isValid,
+          isTokenValid: health.isValid,
+          isCheckpoint: health.isCheckpoint,
+          tokenStatusMessage: health.statusMessage,
           autoReplyEnabled,
           createdAt: page.createdAt,
-        })),
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      data: {
+        pages: pagesWithHealth,
       },
     });
   } catch (error) {
@@ -319,3 +330,37 @@ export async function resubscribePageController(
     throw error;
   }
 }
+
+export async function checkPageHealthController(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  try {
+    const userId = req.user!.userId;
+    const { pageId } = req.params;
+
+    if (!pageId || Array.isArray(pageId)) {
+      res.status(400).json({ success: false, message: "Invalid page ID" });
+      return;
+    }
+
+    const page = await getPageById(userId, pageId);
+    const health = await checkPageTokenHealth(page.pageAccessToken);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        pageId: page.pageId,
+        pageName: page.pageName,
+        isConnected: page.isConnected,
+        isTokenValid: health.isValid,
+        isCheckpoint: health.isCheckpoint,
+        statusMessage: health.statusMessage,
+      },
+    });
+  } catch (error) {
+    logger.error({ error }, "Check page health failed");
+    throw error;
+  }
+}
+

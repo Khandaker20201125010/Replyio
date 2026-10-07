@@ -9,9 +9,7 @@ node_modules
 text.md
 .vercel
 
-test-models.js
-test-openrouter.js
-
-backend/test-models.js
-backend/test-openrouter.js
-
+# Test and diagnostic scripts (may contain credentials)
+test-*.js
+find-model.js
+check-sync.js

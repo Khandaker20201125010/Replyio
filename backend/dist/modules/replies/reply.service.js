@@ -22,15 +22,29 @@ const prisma_1 = __importDefault(require("../../config/prisma"));
 const errors_1 = require("../../utils/errors");
 const logger_1 = require("../../utils/logger");
 const axios_1 = __importDefault(require("axios"));
+const user_1 = require("../../utils/user");
 function getReplies(userId, filters) {
     return __awaiter(this, void 0, void 0, function* () {
-        const { commentId, pageId, status, limit = 20, offset = 0 } = filters;
+        const { commentId, pageId, status, limit = 20 } = filters;
+        const effectiveUserIds = yield (0, user_1.getEffectiveUserIds)(userId);
+        const take = Math.max(1, Number(limit) || 20);
+        const pageNum = Math.max(1, Number(filters.page || 1));
+        const offset = filters.offset !== undefined ? Math.max(0, Number(filters.offset)) : (pageNum - 1) * take;
         const where = {
-            comment: {
-                facebookPage: {
-                    userId,
+            OR: [
+                {
+                    facebookPage: {
+                        userId: { in: effectiveUserIds },
+                    },
                 },
-            },
+                {
+                    comment: {
+                        facebookPage: {
+                            userId: { in: effectiveUserIds },
+                        },
+                    },
+                },
+            ],
         };
         if (commentId) {
             where.commentId = commentId;
@@ -38,7 +52,7 @@ function getReplies(userId, filters) {
         if (pageId) {
             where.facebookPageId = pageId;
         }
-        if (status) {
+        if (status && status !== "ALL") {
             where.status = status;
         }
         const [replies, total] = yield Promise.all([
@@ -62,7 +76,7 @@ function getReplies(userId, filters) {
                 orderBy: {
                     createdAt: "desc",
                 },
-                take: limit,
+                take,
                 skip: offset,
             }),
             prisma_1.default.reply.count({ where }),
@@ -78,11 +92,12 @@ function getReplies(userId, filters) {
 }
 function getReplyById(userId, replyId) {
     return __awaiter(this, void 0, void 0, function* () {
+        const effectiveUserIds = yield (0, user_1.getEffectiveUserIds)(userId);
         const reply = yield prisma_1.default.reply.findFirst({
             where: {
                 id: replyId,
                 facebookPage: {
-                    userId,
+                    userId: { in: effectiveUserIds },
                 },
             },
             include: {
@@ -98,11 +113,12 @@ function getReplyById(userId, replyId) {
 }
 function approveReply(userId, replyId) {
     return __awaiter(this, void 0, void 0, function* () {
+        const effectiveUserIds = yield (0, user_1.getEffectiveUserIds)(userId);
         const reply = yield prisma_1.default.reply.findFirst({
             where: {
                 id: replyId,
                 facebookPage: {
-                    userId,
+                    userId: { in: effectiveUserIds },
                 },
             },
         });
@@ -132,11 +148,12 @@ function approveReply(userId, replyId) {
 }
 function rejectReply(userId, replyId) {
     return __awaiter(this, void 0, void 0, function* () {
+        const effectiveUserIds = yield (0, user_1.getEffectiveUserIds)(userId);
         const reply = yield prisma_1.default.reply.findFirst({
             where: {
                 id: replyId,
                 facebookPage: {
-                    userId,
+                    userId: { in: effectiveUserIds },
                 },
             },
         });
@@ -158,11 +175,12 @@ function rejectReply(userId, replyId) {
 }
 function retryReply(userId, replyId) {
     return __awaiter(this, void 0, void 0, function* () {
+        const effectiveUserIds = yield (0, user_1.getEffectiveUserIds)(userId);
         const reply = yield prisma_1.default.reply.findFirst({
             where: {
                 id: replyId,
                 facebookPage: {
-                    userId,
+                    userId: { in: effectiveUserIds },
                 },
             },
             include: {

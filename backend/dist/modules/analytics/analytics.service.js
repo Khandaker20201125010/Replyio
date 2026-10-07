@@ -18,9 +18,11 @@ exports.getRepliesAnalytics = getRepliesAnalytics;
 exports.getEvents = getEvents;
 const prisma_1 = __importDefault(require("../../config/prisma"));
 const logger_1 = require("../../utils/logger");
+const user_1 = require("../../utils/user");
 function getOverviewAnalytics(userId, filters) {
     return __awaiter(this, void 0, void 0, function* () {
         const { pageId, startDate, endDate, days } = filters;
+        const effectiveUserIds = yield (0, user_1.getEffectiveUserIds)(userId);
         const dateFilter = {};
         if (startDate) {
             dateFilter.gte = new Date(startDate);
@@ -33,7 +35,7 @@ function getOverviewAnalytics(userId, filters) {
         if (endDate) {
             dateFilter.lte = new Date(endDate);
         }
-        const pageWhere = { facebookPage: { userId } };
+        const pageWhere = { facebookPage: { userId: { in: effectiveUserIds } } };
         if (pageId)
             pageWhere.facebookPageId = pageId;
         if (Object.keys(dateFilter).length > 0)
@@ -43,9 +45,9 @@ function getOverviewAnalytics(userId, filters) {
             prisma_1.default.comment.count({ where: Object.assign(Object.assign({}, pageWhere), { status: "REPLIED" }) }),
             prisma_1.default.comment.count({ where: Object.assign(Object.assign({}, pageWhere), { status: "PENDING" }) }),
             prisma_1.default.reply.count({
-                where: Object.assign({ comment: { facebookPage: { userId } }, status: "SENT" }, (pageId && { facebookPageId: pageId })),
+                where: Object.assign({ comment: { facebookPage: { userId: { in: effectiveUserIds } } }, status: "SENT" }, (pageId && { facebookPageId: pageId })),
             }),
-            prisma_1.default.facebookPage.count({ where: { userId, isConnected: true } }),
+            prisma_1.default.facebookPage.count({ where: { userId: { in: effectiveUserIds }, isConnected: true } }),
         ]);
         const successRate = totalComments > 0
             ? Math.round((repliedComments / totalComments) * 100)
@@ -64,6 +66,7 @@ function getOverviewAnalytics(userId, filters) {
 function getCommentsAnalytics(userId, filters) {
     return __awaiter(this, void 0, void 0, function* () {
         const { pageId, startDate, endDate, days } = filters;
+        const effectiveUserIds = yield (0, user_1.getEffectiveUserIds)(userId);
         const dateFilter = {};
         if (startDate) {
             dateFilter.gte = new Date(startDate);
@@ -76,7 +79,7 @@ function getCommentsAnalytics(userId, filters) {
         if (endDate) {
             dateFilter.lte = new Date(endDate);
         }
-        const where = { facebookPage: { userId } };
+        const where = { facebookPage: { userId: { in: effectiveUserIds } } };
         if (pageId)
             where.facebookPageId = pageId;
         if (Object.keys(dateFilter).length > 0)
@@ -110,6 +113,7 @@ function getCommentsAnalytics(userId, filters) {
 function getRepliesAnalytics(userId, filters) {
     return __awaiter(this, void 0, void 0, function* () {
         const { pageId, startDate, endDate, days } = filters;
+        const effectiveUserIds = yield (0, user_1.getEffectiveUserIds)(userId);
         const dateFilter = {};
         if (startDate) {
             dateFilter.gte = new Date(startDate);
@@ -125,7 +129,7 @@ function getRepliesAnalytics(userId, filters) {
         const where = {
             comment: {
                 facebookPage: {
-                    userId,
+                    userId: { in: effectiveUserIds },
                 },
             },
         };

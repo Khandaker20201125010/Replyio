@@ -7,6 +7,7 @@ import {
   ConflictError,
 } from "../../utils/errors";
 import { logger } from "../../utils/logger";
+import { getEffectiveUserIds } from "../../utils/user";
 import type {
   FacebookPagesResponse,
   FacebookPageDetails,
@@ -215,9 +216,10 @@ export async function subscribePageToWebhooks(
 }
 
 export async function resubscribePage(userId: string, pageIdOrId: string) {
+  const effectiveUserIds = await getEffectiveUserIds(userId);
   const page = await prisma.facebookPage.findFirst({
     where: {
-      userId,
+      userId: { in: effectiveUserIds },
       OR: [{ id: pageIdOrId }, { pageId: pageIdOrId }],
       isConnected: true,
     },
@@ -239,9 +241,10 @@ export async function resubscribePage(userId: string, pageIdOrId: string) {
 }
 
 export async function disconnectPage(userId: string, pageIdOrId: string) {
+  const effectiveUserIds = await getEffectiveUserIds(userId);
   const page = await prisma.facebookPage.findFirst({
     where: {
-      userId,
+      userId: { in: effectiveUserIds },
       OR: [{ id: pageIdOrId }, { pageId: pageIdOrId }],
     },
   });
@@ -285,9 +288,10 @@ export async function disconnectPage(userId: string, pageIdOrId: string) {
 }
 
 export async function getUserConnectedPages(userId: string) {
+  const effectiveUserIds = await getEffectiveUserIds(userId);
   return await prisma.facebookPage.findMany({
     where: {
-      userId,
+      userId: { in: effectiveUserIds },
       isConnected: true,
     },
     orderBy: {
@@ -297,9 +301,10 @@ export async function getUserConnectedPages(userId: string) {
 }
 
 export async function getPageById(userId: string, pageIdOrId: string) {
+  const effectiveUserIds = await getEffectiveUserIds(userId);
   const page = await prisma.facebookPage.findFirst({
     where: {
-      userId,
+      userId: { in: effectiveUserIds },
       OR: [{ id: pageIdOrId }, { pageId: pageIdOrId }],
       isConnected: true,
     },
@@ -311,4 +316,44 @@ export async function getPageById(userId: string, pageIdOrId: string) {
 
   return page;
 }
+
+export async function checkPageTokenHealth(pageAccessToken: string): Promise<{
+  isValid: boolean;
+  isCheckpoint: boolean;
+  statusMessage: string;
+}> {
+  try {
+    const res = await axios.get("https://graph.facebook.com/v18.0/me", {
+      params: { access_token: pageAccessToken },
+      timeout: 5000,
+    });
+    if (res.data?.id) {
+      return { isValid: true, isCheckpoint: false, statusMessage: "Active" };
+    }
+    return { isValid: false, isCheckpoint: false, statusMessage: "Invalid token response" };
+  } catch (err: any) {
+    const fbError = err.response?.data?.error;
+    if (fbError) {
+      if (fbError.code === 190 && fbError.error_subcode === 459) {
+        return {
+          isValid: false,
+          isCheckpoint: true,
+          statusMessage: "Facebook security checkpoint: Please log in to www.facebook.com to verify your account, then reconnect your page.",
+        };
+      }
+      return {
+        isValid: false,
+        isCheckpoint: false,
+        statusMessage: fbError.message || "Token expired or invalid",
+      };
+    }
+    return {
+      isValid: false,
+      isCheckpoint: false,
+      statusMessage: err.message || "Could not reach Meta Graph API",
+    };
+  }
+}
+
+
 

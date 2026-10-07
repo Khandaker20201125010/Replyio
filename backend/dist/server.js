@@ -51,7 +51,6 @@ process.on("SIGINT", () => __awaiter(void 0, void 0, void 0, function* () {
 if (process.env.VERCEL !== "1") {
     startServer();
 }
-// Export for Vercel
 exports.default = app_1.default;
 exports.handler = app_1.default;
 //server

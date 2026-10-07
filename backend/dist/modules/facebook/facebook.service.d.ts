@@ -50,4 +50,9 @@ export declare function getPageById(userId: string, pageIdOrId: string): Promise
     createdAt: Date;
     updatedAt: Date;
 }>;
+export declare function checkPageTokenHealth(pageAccessToken: string): Promise<{
+    isValid: boolean;
+    isCheckpoint: boolean;
+    statusMessage: string;
+}>;
 //# sourceMappingURL=facebook.service.d.ts.map

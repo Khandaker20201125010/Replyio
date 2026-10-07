@@ -19,6 +19,7 @@ exports.disconnectPageController = disconnectPageController;
 exports.getConnectedPagesController = getConnectedPagesController;
 exports.getPageController = getPageController;
 exports.resubscribePageController = resubscribePageController;
+exports.checkPageHealthController = checkPageHealthController;
 const facebook_service_1 = require("./facebook.service");
 const logger_1 = require("../../utils/logger");
 const env_1 = require("../../config/env");
@@ -206,18 +207,25 @@ function getConnectedPagesController(req, res) {
             const autoReplyEnabled = aiSettings
                 ? !aiSettings.humanApprovalMode && aiSettings.status === "ACTIVE"
                 : true;
+            const pagesWithHealth = yield Promise.all(pages.map((page) => __awaiter(this, void 0, void 0, function* () {
+                const health = yield (0, facebook_service_1.checkPageTokenHealth)(page.pageAccessToken);
+                return {
+                    id: page.id,
+                    pageId: page.pageId,
+                    pageName: page.pageName,
+                    isConnected: page.isConnected,
+                    isActive: page.isConnected && health.isValid,
+                    isTokenValid: health.isValid,
+                    isCheckpoint: health.isCheckpoint,
+                    tokenStatusMessage: health.statusMessage,
+                    autoReplyEnabled,
+                    createdAt: page.createdAt,
+                };
+            })));
             res.status(200).json({
                 success: true,
                 data: {
-                    pages: pages.map((page) => ({
-                        id: page.id,
-                        pageId: page.pageId,
-                        pageName: page.pageName,
-                        isConnected: page.isConnected,
-                        isActive: page.isConnected,
-                        autoReplyEnabled,
-                        createdAt: page.createdAt,
-                    })),
+                    pages: pagesWithHealth,
                 },
             });
         }
@@ -275,6 +283,35 @@ function resubscribePageController(req, res) {
         }
         catch (error) {
             logger_1.logger.error({ error }, "Resubscribe page failed");
+            throw error;
+        }
+    });
+}
+function checkPageHealthController(req, res) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            const userId = req.user.userId;
+            const { pageId } = req.params;
+            if (!pageId || Array.isArray(pageId)) {
+                res.status(400).json({ success: false, message: "Invalid page ID" });
+                return;
+            }
+            const page = yield (0, facebook_service_1.getPageById)(userId, pageId);
+            const health = yield (0, facebook_service_1.checkPageTokenHealth)(page.pageAccessToken);
+            res.status(200).json({
+                success: true,
+                data: {
+                    pageId: page.pageId,
+                    pageName: page.pageName,
+                    isConnected: page.isConnected,
+                    isTokenValid: health.isValid,
+                    isCheckpoint: health.isCheckpoint,
+                    statusMessage: health.statusMessage,
+                },
+            });
+        }
+        catch (error) {
+            logger_1.logger.error({ error }, "Check page health failed");
             throw error;
         }
     });

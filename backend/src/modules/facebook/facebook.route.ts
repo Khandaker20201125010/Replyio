@@ -7,6 +7,7 @@ import {
   getConnectedPagesController,
   getPageController,
   resubscribePageController,
+  checkPageHealthController,
 } from "./facebook.controller";
 import { authenticate } from "../../middleware/auth.middleware";
 
@@ -21,6 +22,8 @@ router.post("/pages/connect", authenticate, connectPageController);
 router.delete("/pages/:pageId", authenticate, disconnectPageController);
 router.get("/pages", authenticate, getConnectedPagesController);
 router.get("/pages/:pageId", authenticate, getPageController);
+router.get("/pages/:pageId/health", authenticate, checkPageHealthController);
 router.post("/pages/:pageId/subscribe", authenticate, resubscribePageController);
+
 
 export default router;

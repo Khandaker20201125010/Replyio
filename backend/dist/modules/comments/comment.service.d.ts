@@ -130,7 +130,7 @@ export declare function updateCommentStatus(userId: string, commentId: string, d
     createdAt: Date;
     updatedAt: Date;
 }>;
-export declare function processComment(commentId: string): Promise<{
+export declare function processComment(commentId: string, allowRetry?: boolean): Promise<{
     facebookPage: {
         id: string;
         userId: string;
@@ -142,6 +142,22 @@ export declare function processComment(commentId: string): Promise<{
         createdAt: Date;
         updatedAt: Date;
     };
+    replies: {
+        id: string;
+        commentId: string;
+        facebookPageId: string;
+        replyId: string | null;
+        generatedReply: string;
+        status: import(".prisma/client").$Enums.ReplyStatus;
+        errorMessage: string | null;
+        aiProvider: string | null;
+        ruleId: string | null;
+        confidence: number | null;
+        requiresHumanReview: boolean;
+        approvedBy: string | null;
+        createdAt: Date;
+        updatedAt: Date;
+    }[];
 } & {
     id: string;
     facebookPageId: string;

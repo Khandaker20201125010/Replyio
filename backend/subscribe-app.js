@@ -4,7 +4,7 @@ const appId = '1579868390830964';
 const appSecret = '2514d9271f29a03d0bab4c069d547c32';
 const appAccessToken = `${appId}|${appSecret}`;
 const callbackUrl = 'https://replio-backend.vercel.app/api/webhook';
-const verifyToken = '13a9cb40e68705c89c359e32ecca35b60ec309b8e481bbcaf3371adbdde1900ae8b1517d0c7f4aa13ba4c1665830fd8ae2eab20819432426c9ca6eca3bc03123c';
+const verifyToken = 'replio_meta_webhook_verify_token_2026';
 
 async function setupSubscription() {
   try {

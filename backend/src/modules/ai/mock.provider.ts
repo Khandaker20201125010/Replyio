@@ -9,53 +9,73 @@ export class MockAIProvider implements AIProvider {
     comment: string,
     context?: any,
   ): Promise<AIAnalysisResult> {
-    // Simulate different scenarios based on comment content
-    const lowerComment = comment.toLowerCase();
+    const lower = (comment || "").toLowerCase().trim();
 
-    let intent = "inquiry";
+    let intent = "other";
     let sentiment = "neutral";
     let isSpam = false;
-    let confidence = 0.85;
+    let confidence = 0.9;
     let requiresHumanReview = false;
 
-    // Detect spam keywords
-    const spamKeywords = [
-      "viagra",
-      "cialis",
-      "free money",
-      "winner",
-      "lottery",
-    ];
-    if (spamKeywords.some((keyword) => lowerComment.includes(keyword))) {
+    // Detect spam
+    const spamKeywords = ["viagra", "cialis", "free money", "winner", "lottery", "crypto profit"];
+    if (spamKeywords.some((keyword) => lower.includes(keyword))) {
       isSpam = true;
       confidence = 0.95;
-      requiresHumanReview = false;
     }
 
-    // Detect sentiment
+    // Detect Bengali script
+    const hasBengali = /[\u0980-\u09FF]/.test(comment);
+    let language = hasBengali ? "bn" : "en";
+
+    // Intent detection
     if (
-      lowerComment.includes("thank") ||
-      lowerComment.includes("great") ||
-      lowerComment.includes("awesome")
+      lower.includes("hi") ||
+      lower.includes("hello") ||
+      lower.includes("hey") ||
+      lower.startsWith("hi") ||
+      lower.startsWith("hey") ||
+      lower.includes("how are you") ||
+      lower.includes("কেমন আছেন") ||
+      lower.includes("সালাম")
     ) {
+      intent = "greeting";
       sentiment = "positive";
-      intent = "compliment";
     } else if (
-      lowerComment.includes("bad") ||
-      lowerComment.includes("terrible") ||
-      lowerComment.includes("hate")
+      lower.includes("thank") ||
+      lower.includes("great") ||
+      lower.includes("awesome") ||
+      lower.includes("nice") ||
+      lower.includes("good") ||
+      lower.includes("love") ||
+      lower.includes("সুন্দর") ||
+      lower.includes("ভালো") ||
+      lower.includes("অসাধারণ")
     ) {
-      sentiment = "negative";
+      intent = "compliment";
+      sentiment = "positive";
+    } else if (
+      lower.includes("bad") ||
+      lower.includes("terrible") ||
+      lower.includes("fake") ||
+      lower.includes("scam") ||
+      lower.includes("খারাপ")
+    ) {
       intent = "complaint";
-      requiresHumanReview = true;
-    } else if (lowerComment.includes("?")) {
+      sentiment = "negative";
+      requiresHumanReview = false;
+    } else if (
+      lower.includes("?") ||
+      lower.includes("where") ||
+      lower.includes("price") ||
+      lower.includes("cost") ||
+      lower.includes("how") ||
+      lower.includes("koto") ||
+      lower.includes("দাম") ||
+      lower.includes("কোথায়")
+    ) {
       intent = "question";
-    }
-
-    // Detect language (simplified)
-    let language = "en";
-    if (/[^\x00-\x7F]/.test(comment)) {
-      language = "other";
+      sentiment = "neutral";
     }
 
     return {
@@ -73,35 +93,69 @@ export class MockAIProvider implements AIProvider {
     analysis: AIAnalysisResult,
     settings: any,
   ): Promise<AIReplyResult> {
-    const { intent, sentiment, language } = analysis;
-    const { tone = "professional", emojiUsage = true } = settings;
+    const lower = (comment || "").toLowerCase().trim();
+    const isBengali = analysis.language === "bn" || /[\u0980-\u09FF]/.test(comment);
+    const { emojiUsage = true } = settings || {};
 
     let reply = "";
 
-    // Generate contextual replies based on analysis
-    if (analysis.isSpam) {
-      reply = ""; // No reply for spam
-    } else if (sentiment === "positive") {
-      reply = emojiUsage
-        ? "Thank you for your kind words! 😊 We appreciate your support."
-        : "Thank you for your kind words! We appreciate your support.";
-    } else if (sentiment === "negative") {
-      reply = emojiUsage
-        ? "We are sorry to hear that. We would like to help resolve this. Please DM us with more details. 🙏"
-        : "We are sorry to hear that. We would like to help resolve this. Please DM us with more details.";
-    } else if (intent === "question") {
-      reply = emojiUsage
-        ? "Thanks for your question! We will get back to you shortly with an answer. 📝"
-        : "Thanks for your question! We will get back to you shortly with an answer.";
+    if (isBengali) {
+      if (analysis.intent === "greeting") {
+        reply = emojiUsage
+          ? "হ্যালো! অনেক ধন্যবাদ কমেন্ট করার জন্য, কেমন আছেন? 😊"
+          : "হ্যালো! অনেক ধন্যবাদ কমেন্ট করার জন্য, কেমন আছেন?";
+      } else if (analysis.intent === "compliment") {
+        reply = emojiUsage
+          ? "অনেক অনেক ধন্যবাদ আপনার সুন্দর মন্তব্যের জন্য! পাশে থাকবেন ❤️"
+          : "অনেক অনেক ধন্যবাদ আপনার সুন্দর মন্তব্যের জন্য! পাশে থাকবেন।";
+      } else if (analysis.intent === "question") {
+        reply = emojiUsage
+          ? "ইনবক্সে বিস্তারিত জানিয়ে দিচ্ছি, অনুগ্রহ করে মেসেজ চেক করুন! 😊"
+          : "ইনবক্সে বিস্তারিত জানিয়ে দিচ্ছি, অনুগ্রহ করে মেসেজ চেক করুন।";
+      } else {
+        reply = emojiUsage
+          ? "অনেক ধন্যবাদ! আপনার মতামত আমাদের জন্য অনেক মূল্যবান ❤️"
+          : "অনেক ধন্যবাদ! আপনার মতামত আমাদের জন্য অনেক মূল্যবান।";
+      }
     } else {
-      reply = emojiUsage
-        ? "Thank you for your comment! We will review it and respond as needed. 👍"
-        : "Thank you for your comment! We will review it and respond as needed.";
-    }
-
-    // Adjust tone
-    if (tone === "casual") {
-      reply = reply.replace("We will", "We'll").replace("We would", "We'd");
+      // Natural English human replies
+      if (analysis.intent === "greeting") {
+        if (lower.includes("how are you")) {
+          reply = emojiUsage
+            ? "Doing great, thank you! How are you doing today? 😊"
+            : "Doing great, thank you! How are you doing today?";
+        } else {
+          reply = emojiUsage
+            ? "Hey there! Thanks for stopping by, hope you're having a great day! 🙌"
+            : "Hey there! Thanks for stopping by, hope you're having a great day!";
+        }
+      } else if (analysis.intent === "compliment") {
+        reply = emojiUsage
+          ? "Thanks so much! Really appreciate the love and support! 🙌❤️"
+          : "Thanks so much! Really appreciate the love and support!";
+      } else if (analysis.intent === "question") {
+        if (lower.includes("where")) {
+          reply = emojiUsage
+            ? "Feel free to check out our page links or drop us a quick DM for full details! 💬"
+            : "Feel free to check out our page links or drop us a quick DM for full details!";
+        } else if (lower.includes("price") || lower.includes("cost") || lower.includes("koto")) {
+          reply = emojiUsage
+            ? "Just sent you the pricing details in your inbox! Please check your messages 😊"
+            : "Just sent you the pricing details in your inbox! Please check your messages.";
+        } else {
+          reply = emojiUsage
+            ? "Great question! Sent you a message with all the details, check your inbox! 📩"
+            : "Great question! Sent you a message with all the details, check your inbox!";
+        }
+      } else if (analysis.intent === "complaint") {
+        reply = emojiUsage
+          ? "So sorry to hear about that! Please drop us a DM right away so I can personally sort this out for you. 🙏"
+          : "So sorry to hear about that! Please drop us a DM right away so I can personally sort this out for you.";
+      } else {
+        reply = emojiUsage
+          ? "Thanks so much for reaching out! Really appreciate you being here! 🙌"
+          : "Thanks so much for reaching out! Really appreciate you being here!";
+      }
     }
 
     return {
@@ -113,26 +167,11 @@ export class MockAIProvider implements AIProvider {
   async validateReply(reply: string, settings?: any): Promise<boolean> {
     const maxLength = settings?.maxLength || 500;
 
-    // Basic validation
     if (!reply || reply.trim().length === 0) {
       return false;
     }
 
     if (reply.length > maxLength) {
-      return false;
-    }
-
-    // Check for obviously unsafe content
-    const unsafePatterns = [
-      "password",
-      "credit card",
-      "ssn",
-      "social security",
-    ];
-
-    if (
-      unsafePatterns.some((pattern) => reply.toLowerCase().includes(pattern))
-    ) {
       return false;
     }
 
